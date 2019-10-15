@@ -5,11 +5,33 @@ import struct
 import sys
 from std_msgs.msg import Float32MultiArray, MultiArrayLayout, MultiArrayDimension
 
-def get_peaks(message):
+def parse_message(message):
     data_message = message.split('\t')
-    number_optical_lines = data_message[4]
-    peaks = [float(d) for d in data_message[-5:]]
-    return peaks
+    # Reverse message to pop off easier
+    dm = data_message[::-1]
+    data = {}
+    data['date'] = dm.pop()
+    data['time'] = dm.pop()
+    data['count'] = int(dm.pop())
+    data['measured_channels'] = int(dm.pop())
+   
+    for i in xrange(data['measured_channels']):
+        channel = {}
+        channel['name'] = int(dm.pop())
+        channel['sensor_count'] = int(dm.pop())
+        channel['error'] = dm[-4:]; dm=dm[0:-4]
+        channel['peak_wavelengths'] = dm[-channel['sensor_count']:]; dm = dm[0:-channel['sensor_count']]
+        channel['peak_wavelengths'].reverse()   # maintain order
+        channel['peak_powers'] = dm[-channel['sensor_count']:]; dm = dm[0:-channel['sensor_count']]
+        channel['peak_powers'].reverse()        # maintain order
+
+        # Nest channels inside of data structure
+        data['channel_{0}'.format(channel['name'])] = channel
+
+    data['strain_count'] = int(dm.pop())
+    data['strain'] = [float(d) for d in dm[-data['strain_count']:]]
+    data['strain'].reverse()    # maintain order
+    return data
 
 
 # Create ros publisher and start node
@@ -42,11 +64,11 @@ while True:
             data_message += new_data
 
         if data_message: # New message to publish
-            peaks = get_peaks(data_message)
+            data = parse_message(data_message)
             # Create rosmessage
-            dim = MultiArrayDimension('length', 5, 1)
+            dim = MultiArrayDimension('length', data['strain_count'], 1)
             layout = MultiArrayLayout([dim], 0)
-            ros_message = Float32MultiArray(layout, peaks)
+            ros_message = Float32MultiArray(layout, data['strain'])
             pub.publish(ros_message)
 
 
