@@ -1,7 +1,7 @@
 # fbgs_sensor
 ROS interface for Illumisense (FBGS) software
 
-This is a very simple example which creates an fbgs_sensor_node that currently only broadcast strain measurements from FBGS
+This is a very simple example which creates an fbgs_sensor_node that currently only broadcast strain and wavelength measurements from FBGS
 
 # Dependencies
 * ROS 
