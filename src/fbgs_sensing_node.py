@@ -21,8 +21,10 @@ def parse_message(message):
         channel['sensor_count'] = int(dm.pop())
         channel['error'] = dm[-4:]; dm=dm[0:-4]
         channel['peak_wavelengths'] = dm[-channel['sensor_count']:]; dm = dm[0:-channel['sensor_count']]
+        channel['peak_wavelengths'] = [float(w) for w in channel['peak_wavelengths']] # Cast to float
         channel['peak_wavelengths'].reverse()   # maintain order
         channel['peak_powers'] = dm[-channel['sensor_count']:]; dm = dm[0:-channel['sensor_count']]
+        channel['peak_powers'] = [float(p) for p in channel['peak_powers']] # Cast to float
         channel['peak_powers'].reverse()        # maintain order
 
         # Nest channels inside of data structure
@@ -33,9 +35,16 @@ def parse_message(message):
     data['strain'].reverse()    # maintain order
     return data
 
+def get_wavelengths(fbgs):
+    wavelengths = []
+    for key, value in sorted(fbgs.iteritems()):
+        if key.startswith('channel'):
+            wavelengths.extend(fbgs[key]['peak_wavelengths'])
+    return wavelengths
 
 # Create ros publisher and start node
 pub = rospy.Publisher('fbgs_strain', Float32MultiArray, queue_size=10)
+pub_wavelength = rospy.Publisher('fbgs_wavelength', Float32MultiArray, queue_size=10)
 rospy.init_node('fbgs_sensor', anonymous=True)
 
 # Create TCP/IP socket
@@ -65,11 +74,18 @@ while True:
 
         if data_message: # New message to publish
             data = parse_message(data_message)
-            # Create rosmessage
+            # Create strain message
             dim = MultiArrayDimension('length', data['strain_count'], 1)
             layout = MultiArrayLayout([dim], 0)
-            ros_message = Float32MultiArray(layout, data['strain'])
-            pub.publish(ros_message)
+            strain_message = Float32MultiArray(layout, data['strain'])
+            pub.publish(strain_message)
+            
+            # Create wavelength message
+            wavelengths = get_wavelengths(data)
+            dim = MultiArrayDimension('length', len(wavelengths), 1)
+            layout = MultiArrayLayout([dim], 0)
+            wavelength_message = Float32MultiArray(layout, wavelengths)
+            pub_wavelength.publish(wavelength_message)
 
 
         #sys.stdout.write('\rMessage received: {0}\r'.format(data_message))
