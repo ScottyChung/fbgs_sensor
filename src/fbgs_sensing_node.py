@@ -5,6 +5,24 @@ import struct
 import sys
 from std_msgs.msg import Float32MultiArray, MultiArrayLayout, MultiArrayDimension
 
+def recv_msg(sock):
+    # Read size of data
+    data_size = recv_all(sock,4)
+    if not data_size:
+        return None
+    data_size = struct.unpack(">i",data_size)[0] # Convert bytestring to int32
+    return recv_all(sock, data_size)
+
+def recv_all(sock, n):
+    #Helper to grab a spefic amount of bytes
+    data = bytearray()
+    while len(data) < n:
+        packet = sock.recv(n-len(data))
+        if not packet:
+            return None
+        data.extend(packet)
+    return data
+    
 def parse_message(message):
     data_message = message.split('\t')
     # Reverse message to pop off easier
@@ -19,7 +37,8 @@ def parse_message(message):
         channel = {}
         channel['name'] = int(dm.pop())
         channel['sensor_count'] = int(dm.pop())
-        channel['error'] = dm[-4:]; dm=dm[0:-4]
+        channel['error'] = dm[-4:]
+        dm=dm[0:-4]
         channel['peak_wavelengths'] = dm[-channel['sensor_count']:]; dm = dm[0:-channel['sensor_count']]
         channel['peak_wavelengths'] = [float(w) for w in channel['peak_wavelengths']] # Cast to float
         channel['peak_wavelengths'].reverse()   # maintain order
@@ -31,7 +50,7 @@ def parse_message(message):
         data['channel_{0}'.format(channel['name'])] = channel
 
     data['strain_count'] = int(dm.pop())
-    data['strain'] = [float(d) for d in dm[-data['strain_count']:]]
+    data['strain'] = [float(d.split('\r')[0]) for d in dm[-data['strain_count']:]]
     data['strain'].reverse()    # maintain order
     return data
 
@@ -51,26 +70,19 @@ rospy.init_node('fbgs_sensor', anonymous=True)
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 # Connect to port where server is listening
-host_computer = '1612-ultron'
+#host_computer = 'biomd-thorn'
+host_computer = 'AC-GR-214GXH'
 port = 2055
 server_address = (host_computer, port)
 
 print('Connecting to %s:%s' % server_address)
 sock.connect(server_address)
-
+print('Connected attempting to publish data')
 while True:
     try:
-        # Read size of data
-        data_size = sock.recv(4)
-        data_size = struct.unpack(">i",data_size)[0] # Convert bytestring to int32
 
-        # Collect expected amount of data
-        data_message = b''
-        data_rec = 0
-        while data_rec < data_size:
-            new_data = sock.recv(128)
-            data_rec += len(new_data)
-            data_message += new_data
+        # Collect data message
+        data_message = recv_msg(sock)
 
         if data_message: # New message to publish
             data = parse_message(data_message)
