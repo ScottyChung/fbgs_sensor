@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="2">
-  <name>fbgs_sensing</name>
+  <name>fbgs_sensor</name>
   <version>0.0.1</version>
   <description>Package for interacting with FBGS Illumisense sensing software</description>
 

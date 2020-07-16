@@ -1,11 +1,18 @@
 # fbgs_sensor
 ROS interface for Illumisense (FBGS) software
 
-This is a very simple example which creates an fbgs_sensor_node that currently only broadcast strain measurements from FBGS
+This is a very simple example which creates an fbgs_sensor_node that currently only broadcast strain and wavelength measurements from FBGS
 
 # Dependencies
 * ROS 
 * Illumisense (Windows Only Currently)
+
+# Installation
+Clone project into catkin workspace and build the project. 
+```bash
+git clone https://github.com/ScottyChung/fbgs_sensor
+catkin build fbgs_sensor
+```
 
 # Getting Started
 The Illumisense software has a setting to stream measurements over TCP. Ensure this streaming is enabled on the measurement workstation. Modify the host_computer variable in `src/fbgs_sensing_node.py` to match the measurment workstation. Running the following command should start the node. 
