@@ -5,6 +5,7 @@ import struct
 import sys
 import os
 import rospkg
+from threading import Thread
 from PyQt4 import QtGui, uic
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
@@ -72,10 +73,10 @@ class MyWindow(QtGui.QMainWindow):
         rp = rospkg.RosPack()
         ui_path = os.path.join(rp.get_path('fbgs_sensor'), 'resources', 'fbgs_sensor.ui')
         uic.loadUi(ui_path, self)
-        self.connectChk.clicked.connect(self.run)
+        self.connectChk.clicked.connect(self.connect)
         self.show()
 
-    def run(self):
+    def connect(self):
         #Handle no host
         if self.hostInput.text().isEmpty():
             self.connectChk.setChecked(False)
@@ -98,37 +99,39 @@ class MyWindow(QtGui.QMainWindow):
         try:
             sock.connect(server_address)
             print('Connected! Starting to publish data')
+            threading.Thread(target=self.run, args=sock).start()
         except:
             self.connectChk.setChecked(False)
             print('Error when connecting. Check host name')
             return
-
+        
+    def run(sock):
         while True:
-            try:
-                data_message = recv_msg(sock)
+	    try:
+		data_message = recv_msg(sock)
 
-                if data_message: # New message to publish
-                    data = parse_message(data_message)
-                    # Create strain message
-                    dim = MultiArrayDimension('length', data['strain_count'], 1)
-                    layout = MultiArrayLayout([dim], 0)
-                    strain_message = Float32MultiArray(layout, data['strain'])
-                    pub.publish(strain_message)
-                    
-                    # Create wavelength message
-                    wavelengths = get_wavelengths(data)
-                    dim = MultiArrayDimension('length', len(wavelengths), 1)
-                    layout = MultiArrayLayout([dim], 0)
-                    wavelength_message = Float32MultiArray(layout, wavelengths)
-                    pub_wavelength.publish(wavelength_message)
+		if data_message: # New message to publish
+		    data = parse_message(data_message)
+		    # Create strain message
+		    dim = MultiArrayDimension('length', data['strain_count'], 1)
+		    layout = MultiArrayLayout([dim], 0)
+		    strain_message = Float32MultiArray(layout, data['strain'])
+		    pub.publish(strain_message)
+		    
+		    # Create wavelength message
+		    wavelengths = get_wavelengths(data)
+		    dim = MultiArrayDimension('length', len(wavelengths), 1)
+		    layout = MultiArrayLayout([dim], 0)
+		    wavelength_message = Float32MultiArray(layout, wavelengths)
+		    pub_wavelength.publish(wavelength_message)
 
 
-                #sys.stdout.write('\rMessage received: {0}\r'.format(data_message))
+		#sys.stdout.write('\rMessage received: {0}\r'.format(data_message))
 
-            except KeyboardInterrupt:
-                print('Closing socket')
-                sock.close()
-                sys.exit()
+	    except KeyboardInterrupt:
+		print('Closing socket')
+		sock.close()
+		sys.exit()
 
 
 if __name__ == '__main__':
