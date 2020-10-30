@@ -67,74 +67,84 @@ def get_wavelengths(fbgs):
             wavelengths.extend(fbgs[key]['peak_wavelengths'])
     return wavelengths
 
+class FBGSWorker(Thread):
+    def __init__(self):
+        Thread.__init__(self)
+        self.running = True
+
+    def connect(self, host):
+        #Handle no host
+        if host.isEmpty():
+            self.connectChk.setChecked(False)
+            return
+        # Create ros publisher and start node
+        self.pub = rospy.Publisher('fbgs_strain', Float32MultiArray, queue_size=10)
+        self.pub_wavelength = rospy.Publisher('fbgs_wavelength', Float32MultiArray, queue_size=10)
+        rospy.init_node('fbgs_sensor', anonymous=True)
+
+        # Create TCP/IP socket
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # Connect to port where server is listening
+        host_computer = host.split(':')[0]
+        port = int(host.split(':')[-1])
+        server_address = (host_computer, port)
+
+        print('Connecting to %s:%s' % server_address)
+
+        self.sock.connect(server_address)
+        print('Connected! Starting to publish data')
+
+    def run(self):
+        print('Trying to get data')
+        while self.running:
+            try:
+                data_message = recv_msg(self.sock)
+
+                if data_message: # New message to publish
+                    data = parse_message(data_message)
+                    # Create strain message
+                    dim = MultiArrayDimension('length', data['strain_count'], 1)
+                    layout = MultiArrayLayout([dim], 0)
+                    strain_message = Float32MultiArray(layout, data['strain'])
+                    self.pub.publish(strain_message)
+                    
+                    # Create wavelength message
+                    wavelengths = get_wavelengths(data)
+                    dim = MultiArrayDimension('length', len(wavelengths), 1)
+                    layout = MultiArrayLayout([dim], 0)
+                    wavelength_message = Float32MultiArray(layout, wavelengths)
+                    self.pub_wavelength.publish(wavelength_message)
+            except:
+                continue
+        self.stop()
+
+    def stop(self):
+        self.sock.close()
+
 class MyWindow(QtGui.QMainWindow):
     def __init__(self):
         super(MyWindow, self).__init__()
         rp = rospkg.RosPack()
         ui_path = os.path.join(rp.get_path('fbgs_sensor'), 'resources', 'fbgs_sensor.ui')
         uic.loadUi(ui_path, self)
-        self.connectChk.clicked.connect(self.connect)
+        self.connectChk.clicked.connect(self.clicked)
         self.show()
 
-    def connect(self):
-        #Handle no host
-        if self.hostInput.text().isEmpty():
-            self.connectChk.setChecked(False)
-            return
-        # Create ros publisher and start node
-        pub = rospy.Publisher('fbgs_strain', Float32MultiArray, queue_size=10)
-        pub_wavelength = rospy.Publisher('fbgs_wavelength', Float32MultiArray, queue_size=10)
-        rospy.init_node('fbgs_sensor', anonymous=True)
+    def clicked(self):
+        if self.connectChk.checkState():
+            self.worker = FBGSWorker()
+            self.worker.connect(self.hostInput.text())
+            self.worker.start()
+        else:
+            print('unclick')
+            self.worker.running = False
 
-        # Create TCP/IP socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # Connect to port where server is listening
-        host_computer = self.hostInput.text().split(':')[0]
-        port = int(self.hostInput.text().split(':')[-1])
-        server_address = (host_computer, port)
-
-        print('Connecting to %s:%s' % server_address)
-
-        try:
-            sock.connect(server_address)
-            print('Connected! Starting to publish data')
-            threading.Thread(target=self.run, args=sock).start()
-        except:
-            self.connectChk.setChecked(False)
-            print('Error when connecting. Check host name')
-            return
         
-    def run(sock):
-        while True:
-	    try:
-		data_message = recv_msg(sock)
-
-		if data_message: # New message to publish
-		    data = parse_message(data_message)
-		    # Create strain message
-		    dim = MultiArrayDimension('length', data['strain_count'], 1)
-		    layout = MultiArrayLayout([dim], 0)
-		    strain_message = Float32MultiArray(layout, data['strain'])
-		    pub.publish(strain_message)
-		    
-		    # Create wavelength message
-		    wavelengths = get_wavelengths(data)
-		    dim = MultiArrayDimension('length', len(wavelengths), 1)
-		    layout = MultiArrayLayout([dim], 0)
-		    wavelength_message = Float32MultiArray(layout, wavelengths)
-		    pub_wavelength.publish(wavelength_message)
-
-
-		#sys.stdout.write('\rMessage received: {0}\r'.format(data_message))
-
-	    except KeyboardInterrupt:
-		print('Closing socket')
-		sock.close()
-		sys.exit()
 
 
 if __name__ == '__main__':
     app = QtGui.QApplication(sys.argv)
     window = MyWindow()
     sys.exit(app.exec_())
+
