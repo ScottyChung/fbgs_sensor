@@ -5,6 +5,7 @@ import struct
 import sys
 import os
 import rospkg
+import time
 from threading import Thread
 from PyQt4 import QtGui, uic
 from PyQt4.QtCore import *
@@ -116,7 +117,7 @@ class FBGSWorker(Thread):
                     wavelength_message = Float32MultiArray(layout, wavelengths)
                     self.pub_wavelength.publish(wavelength_message)
             except:
-                continue
+                time.sleep(0.001)
         self.stop()
 
     def stop(self):
