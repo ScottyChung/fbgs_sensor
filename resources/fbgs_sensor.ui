@@ -38,7 +38,7 @@
          <item>
           <widget class="QLineEdit" name="hostInput">
            <property name="text">
-            <string>1612-Ultron:2055</string>
+            <string>biomd-primez590:2055</string>
            </property>
            <property name="placeholderText">
             <string>Host:Port</string>

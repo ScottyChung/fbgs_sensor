@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import rospy
 import socket
 import struct
@@ -6,10 +6,12 @@ import sys
 import os
 import rospkg
 import time
+import select
 from threading import Thread
-from PyQt4 import QtGui, uic
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from PyQt5 import QtGui, uic
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
 from std_msgs.msg import Float32MultiArray, MultiArrayLayout, MultiArrayDimension
 
 def recv_msg(sock):
@@ -31,7 +33,7 @@ def recv_all(sock, n):
     return data
     
 def parse_message(message):
-    data_message = message.split('\t')
+    data_message = message.split(b'\t')
     # Reverse message to pop off easier
     dm = data_message[::-1]
     data = {}
@@ -39,31 +41,36 @@ def parse_message(message):
     data['time'] = dm.pop()
     data['count'] = int(dm.pop())
     data['measured_channels'] = int(dm.pop())
-   
-    for i in xrange(data['measured_channels']):
+    for i in range(0,data['measured_channels']):
         channel = {}
         channel['name'] = int(dm.pop())
         channel['sensor_count'] = int(dm.pop())
-        channel['error'] = dm[-4:]
-        dm=dm[0:-4]
-        channel['peak_wavelengths'] = dm[-channel['sensor_count']:]; dm = dm[0:-channel['sensor_count']]
+        
+        channel['error'] = [int(e) for e in dm[-4:]] #Get last four elements
+        dm=dm[0:-4] #Remove last four elements from list
+        
+        channel['peak_wavelengths'] = dm[-channel['sensor_count']:]
+        dm = dm[0:-channel['sensor_count']]
         channel['peak_wavelengths'] = [float(w) for w in channel['peak_wavelengths']] # Cast to float
         channel['peak_wavelengths'].reverse()   # maintain order
-        channel['peak_powers'] = dm[-channel['sensor_count']:]; dm = dm[0:-channel['sensor_count']]
+        
+        channel['peak_powers'] = dm[-channel['sensor_count']:]; 
+        dm = dm[0:-channel['sensor_count']]
         channel['peak_powers'] = [float(p) for p in channel['peak_powers']] # Cast to float
         channel['peak_powers'].reverse()        # maintain order
 
         # Nest channels inside of data structure
         data['channel_{0}'.format(channel['name'])] = channel
 
+
     data['strain_count'] = int(dm.pop())
-    data['strain'] = [float(d.split('\r')[0]) for d in dm[-data['strain_count']:]]
+    data['strain'] = [float(d.split(b'\r')[0]) for d in dm[-data['strain_count']:]]
     data['strain'].reverse()    # maintain order
     return data
 
 def get_wavelengths(fbgs):
     wavelengths = []
-    for key, value in sorted(fbgs.iteritems()):
+    for key, value in sorted(fbgs.items()):
         if key.startswith('channel'):
             wavelengths.extend(fbgs[key]['peak_wavelengths'])
     return wavelengths
@@ -75,7 +82,7 @@ class FBGSWorker(Thread):
 
     def connect(self, host):
         #Handle no host
-        if host.isEmpty():
+        if not host:
             self.connectChk.setChecked(False)
             return
         # Create ros publisher and start node
@@ -99,31 +106,34 @@ class FBGSWorker(Thread):
     def run(self):
         print('Trying to get data')
         while self.running:
-            try:
-                data_message = recv_msg(self.sock)
+            #Check socket for data
+            ready_read, _, _ = select.select([self.sock],[],[], 60)
+            #If no data 
+            if not ready_read:
+                self.stop()
+            data_message = recv_msg(self.sock)
+            #print(bool(data_message))
 
-                if data_message: # New message to publish
-                    data = parse_message(data_message)
-                    # Create strain message
-                    dim = MultiArrayDimension('length', data['strain_count'], 1)
-                    layout = MultiArrayLayout([dim], 0)
-                    strain_message = Float32MultiArray(layout, data['strain'])
-                    self.pub.publish(strain_message)
-                    
-                    # Create wavelength message
-                    wavelengths = get_wavelengths(data)
-                    dim = MultiArrayDimension('length', len(wavelengths), 1)
-                    layout = MultiArrayLayout([dim], 0)
-                    wavelength_message = Float32MultiArray(layout, wavelengths)
-                    self.pub_wavelength.publish(wavelength_message)
-            except:
-                time.sleep(0.001)
+            if bool(data_message): # New message to publish
+                data = parse_message(data_message)
+                # Create strain message
+                dim = MultiArrayDimension('length', data['strain_count'], 1)
+                layout = MultiArrayLayout([dim], 0)
+                strain_message = Float32MultiArray(layout, data['strain'])
+                self.pub.publish(strain_message)
+                
+                # Create wavelength message
+                wavelengths = get_wavelengths(data)
+                dim = MultiArrayDimension('length', len(wavelengths), 1)
+                layout = MultiArrayLayout([dim], 0)
+                wavelength_message = Float32MultiArray(layout, wavelengths)
+                self.pub_wavelength.publish(wavelength_message)
         self.stop()
 
     def stop(self):
         self.sock.close()
 
-class MyWindow(QtGui.QMainWindow):
+class MyWindow(QMainWindow):
     def __init__(self):
         super(MyWindow, self).__init__()
         rp = rospkg.RosPack()
@@ -140,12 +150,13 @@ class MyWindow(QtGui.QMainWindow):
         else:
             print('unclick')
             self.worker.running = False
+            self.worker.join()
 
         
 
 
 if __name__ == '__main__':
-    app = QtGui.QApplication(sys.argv)
+    app = QApplication(sys.argv)
     window = MyWindow()
     sys.exit(app.exec_())
 
