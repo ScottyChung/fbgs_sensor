@@ -63,7 +63,7 @@
       </layout>
      </item>
      <item>
-      <widget class="QTextBrowser" name="textBrowser"/>
+      <widget class="QTextBrowser" name="printText"/>
      </item>
     </layout>
    </widget>

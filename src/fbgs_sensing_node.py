@@ -75,20 +75,25 @@ def get_wavelengths(fbgs):
             wavelengths.extend(fbgs[key]['peak_wavelengths'])
     return wavelengths
 
-class FBGSWorker(Thread):
+class FBGSWorker(QThread):
+    #Use signal to update textbox from seperate thread
+    print_message = pyqtSignal(str)
+    #Signal to run the uncheckbox function of main
+    uncheck = pyqtSignal()
+
     def __init__(self):
-        Thread.__init__(self)
+        QThread.__init__(self)
         self.running = True
+        self.host = None
 
     def connect(self, host):
         #Handle no host
         if not host:
-            self.connectChk.setChecked(False)
-            return
+            self.print_message.emit('No host specified')
+
         # Create ros publisher and start node
         self.pub = rospy.Publisher('fbgs_strain', Float32MultiArray, queue_size=10)
         self.pub_wavelength = rospy.Publisher('fbgs_wavelength', Float32MultiArray, queue_size=10)
-        rospy.init_node('fbgs_sensor', anonymous=True)
 
         # Create TCP/IP socket
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -98,21 +103,31 @@ class FBGSWorker(Thread):
         port = int(host.split(':')[-1])
         server_address = (host_computer, port)
 
-        print('Connecting to %s:%s' % server_address)
+        self.print_message.emit('Connecting to %s:%s' % server_address)
+        #self.printText.append('Connecting to %s:%s' % server_address)
 
-        self.sock.connect(server_address)
-        print('Connected! Starting to publish data')
+        try:
+            print('trying to connect')
+            self.sock.settimeout(5)
+            self.sock.connect(server_address)
+        except Exception as e:
+            print('unable to connect')
+            self.print_message.emit('Error! Could not connect')
+            self.stop()
+        self.print_message.emit('Connected! Starting to publish data')
 
     def run(self):
-        print('Trying to get data')
+        self.connect(self.host)
+        self.print_message.emit('Trying to get data')
         while self.running:
             #Check socket for data
-            ready_read, _, _ = select.select([self.sock],[],[], 60)
+            ready_read, _, _ = select.select([self.sock],[],[], 5)
+
             #If no data 
             if not ready_read:
+                self.print_message.emit('ERROR: No data ready. Is Illumisense running?')
                 self.stop()
             data_message = recv_msg(self.sock)
-            #print(bool(data_message))
 
             if bool(data_message): # New message to publish
                 data = parse_message(data_message)
@@ -131,7 +146,12 @@ class FBGSWorker(Thread):
         self.stop()
 
     def stop(self):
+        self.print_message.emit('Stopping Worker')
         self.sock.close()
+        self.running = False
+        self.uncheck.emit()
+        rospy.signal_shutdown('exit')
+        return
 
 class MyWindow(QMainWindow):
     def __init__(self):
@@ -140,20 +160,34 @@ class MyWindow(QMainWindow):
         ui_path = os.path.join(rp.get_path('fbgs_sensor'), 'resources', 'fbgs_sensor.ui')
         uic.loadUi(ui_path, self)
         self.connectChk.clicked.connect(self.clicked)
+        rospy.init_node('fbgs_sensor', anonymous=True)
         self.show()
 
     def clicked(self):
+        print('clicked')
+        print(self.connectChk.checkState())
         if self.connectChk.checkState():
+            print('making worker')
             self.worker = FBGSWorker()
-            self.worker.connect(self.hostInput.text())
+            print('made worker')
+            self.worker.print_message.connect(self.print_msg)
+            print('connected print message')
+            self.worker.uncheck.connect(self.uncheck_box)
+            print('connected uncheck box')
+            self.worker.host = self.hostInput.text()
             self.worker.start()
+
         else:
-            print('unclick')
+            print('quitting worker')
             self.worker.running = False
-            self.worker.join()
+            self.worker.quit()
 
-        
+    def print_msg(self,msg):
+        self.printText.append(msg)
 
+    def uncheck_box(self):
+        print('uncheck')
+        self.connectChk.setChecked(False)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
