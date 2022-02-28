@@ -1,5 +1,5 @@
 # fbgs_sensor
-ROS interface for Illumisense (FBGS) software
+ROS interface for [Illumisense (FBGS) software](https://fbgs.com/components/illumisense-software/)
 
 This is a very simple example which creates an fbgs_sensor_node that currently only broadcast strain and wavelength measurements from FBGS
 
@@ -26,6 +26,7 @@ This should create a node `/fbgs_sensor` that is broadcasting the topic `/fbgs_s
 # TODO
 ~~* Explain more in readme~~
 ~~* Handle multiple channels and sensors (not sure how the strain is reported with multi-channels)~~
+* Potentially add to ROS or cisstsaw repository
 * Create topics for wavelength, power, other info
 * Add CPP example (maybe)
 * Add UI (maybe)
