@@ -107,14 +107,12 @@ class FBGSWorker(QThread):
         #self.printText.append('Connecting to %s:%s' % server_address)
 
         try:
-            print('trying to connect')
             self.sock.settimeout(5)
             self.sock.connect(server_address)
         except Exception as e:
-            print('unable to connect')
             self.print_message.emit('Error! Could not connect')
             self.stop()
-        self.print_message.emit('Connected! Starting to publish data')
+        self.print_message.emit('Connected!')
 
     def run(self):
         self.connect(self.host)
@@ -150,7 +148,6 @@ class FBGSWorker(QThread):
         self.sock.close()
         self.running = False
         self.uncheck.emit()
-        rospy.signal_shutdown('exit')
         return
 
 class MyWindow(QMainWindow):
@@ -160,25 +157,18 @@ class MyWindow(QMainWindow):
         ui_path = os.path.join(rp.get_path('fbgs_sensor'), 'resources', 'fbgs_sensor.ui')
         uic.loadUi(ui_path, self)
         self.connectChk.clicked.connect(self.clicked)
-        rospy.init_node('fbgs_sensor', anonymous=True)
         self.show()
+        rospy.init_node('fbgs_sensor', anonymous=True)
 
     def clicked(self):
-        print('clicked')
-        print(self.connectChk.checkState())
         if self.connectChk.checkState():
-            print('making worker')
             self.worker = FBGSWorker()
-            print('made worker')
             self.worker.print_message.connect(self.print_msg)
-            print('connected print message')
             self.worker.uncheck.connect(self.uncheck_box)
-            print('connected uncheck box')
             self.worker.host = self.hostInput.text()
             self.worker.start()
 
         else:
-            print('quitting worker')
             self.worker.running = False
             self.worker.quit()
 
@@ -186,7 +176,6 @@ class MyWindow(QMainWindow):
         self.printText.append(msg)
 
     def uncheck_box(self):
-        print('uncheck')
         self.connectChk.setChecked(False)
 
 if __name__ == '__main__':
